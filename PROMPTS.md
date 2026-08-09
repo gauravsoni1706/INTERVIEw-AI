@@ -1,6 +1,6 @@
 # AI Prompt Audit Log & System Specification (`PROMPTS.md`)
 
-This document records the exact system prompts, question-generation templates, evaluation heuristics, follow-up decision logic, and feedback generation prompts powering **InterviewAI**.
+This document records the exact system prompts, question-generation templates, evaluation heuristics, follow-up decision logic, feedback generation prompts, and full vibe-coding development trajectory powering **InterviewAI**.
 
 ---
 
@@ -140,3 +140,20 @@ Output JSON Contract (Section 22):
   ]
 }
 ```
+
+---
+
+## 6. Vibe-Coding Trajectory & Development History
+
+The codebase was developed through an agentic vibe-coding workflow using Antigravity AI:
+
+| Step | User Prompt / Milestone | Action & System Implementation |
+| :--- | :--- | :--- |
+| **1** | *"Build the Complete AI Interview Agent (Full Hackathon Request)"* | Researched specs, generated `implementation_plan.md`, designed state machine architecture. |
+| **2** | *"Proceed with implementation"* | Built FastAPI backend, Pydantic schemas, RAG retriever, LLM abstraction, feedback engine, and single-page React UI. |
+| **3** | *"Why everyone is starting on day 7 do as given in data"* | Updated `_select_next_day()` in `interview_engine.py` to preserve candidate mission order from `candidates.json` (e.g. Day 1 for Wendy Foster, Day 7 for Sarah Johnson). |
+| **4** | *"Add some answers if I am not able to answer"* | Created `DAY_MODEL_ANSWERS` guide across all 31 curriculum days, added `POST /api/interview/hint` endpoint, and added `💡 Hint / Model Answer` button to React UI. |
+| **5** | *"Improve frontend"* | Added candidate search bar, profile breakdown modal with mission chips, active phase banner, and Markdown export button. |
+| **6** | *"Push to github.com/gauravsoni1706/INTERVIEw-AI.git with ~40 commits"* | Created 49 granular, logical git commits and force-pushed `main` branch to remote repository. |
+| **7** | *"Deployed on Render / Check live website"* | Executed live integration tests against `https://interview-ai-agent-hoq6.onrender.com` verifying health, start, turns, hints, and feedback report generation. |
+| **8** | *"Attach live website screenshots not your generated image"* | Installed Playwright Chromium browser, captured live high-res screenshot of Render web app, updated `docs/screenshot.jpg`, and pushed to GitHub. |
