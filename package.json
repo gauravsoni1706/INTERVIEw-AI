@@ -1,0 +1,20 @@
+{
+  "name": "interview-ai",
+  "version": "1.0.0",
+  "description": "InterviewAI - Enterprise AI Interview Agent",
+  "main": "main.py",
+  "scripts": {
+    "start": "python main.py",
+    "test": "python run_tests.py",
+    "dev": "uvicorn main:app --reload --port 8000"
+  },
+  "keywords": [
+    "ai-interviewer",
+    "enterprise-ai",
+    "fastapi",
+    "react",
+    "rag"
+  ],
+  "author": "Google Deepmind Antigravity Team",
+  "license": "MIT"
+}
