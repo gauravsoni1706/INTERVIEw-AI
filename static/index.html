@@ -519,7 +519,34 @@
 
             const downloadMarkdownReport = () => {
                 if (!sessionId) return;
-                window.open(`/api/interview/export/markdown/${sessionId}`, '_blank');
+                fetch(`/api/interview/export/markdown/${sessionId}`)
+                    .then(res => res.text())
+                    .then(mdText => {
+                        const blob = new Blob([mdText], { type: 'text/markdown;charset=utf-8' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `Interview_Report_${(fb?.candidate_name || 'Candidate').replace(/\s+/g, '_')}_${sessionId}.md`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    })
+                    .catch(err => alert("Error downloading Markdown: " + err));
+            };
+
+            const downloadJsonReport = () => {
+                if (!fb) return;
+                const jsonStr = JSON.stringify(fb, null, 2);
+                const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Interview_Feedback_${(fb?.candidate_name || 'Candidate').replace(/\s+/g, '_')}_${sessionId}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
             };
 
             const feedbackView = fb && e("div", { className: "space-y-8 max-w-5xl mx-auto py-8" },
@@ -530,15 +557,23 @@
                         e("h2", { className: "text-3xl font-black text-white mt-1" }, fb.candidate_name),
                         e("p", { className: "text-xs text-gray-400 font-mono mt-0.5" }, fb.job_role, " • ", fb.candidate_id)
                     ),
-                    e("div", { className: "flex items-center gap-4" },
-                        e("div", { className: "text-right" },
+                    e("div", { className: "flex flex-wrap items-center gap-3" },
+                        e("div", { className: "text-right mr-2" },
                             e("div", { className: "text-4xl font-black text-indigo-400" }, fb.overall_score || 85.0, e("span", { className: "text-base text-gray-500 font-normal" }, "/100")),
                             e("div", { className: "mt-1 text-xs font-extrabold text-emerald-400 border border-emerald-500/40 bg-emerald-500/20 px-3 py-1 rounded-xl inline-block" }, fb.hiring_recommendation || "Hire")
                         ),
                         e("button", {
                             onClick: downloadMarkdownReport,
-                            className: "px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition"
-                        }, "📥 Export Markdown")
+                            className: "px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center gap-1.5"
+                        }, "📥 Download .MD"),
+                        e("button", {
+                            onClick: downloadJsonReport,
+                            className: "px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                        }, "💾 Download .JSON"),
+                        e("button", {
+                            onClick: () => window.print(),
+                            className: "px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 border border-white/10 font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                        }, "🖨️ Save PDF")
                     )
                 ),
 

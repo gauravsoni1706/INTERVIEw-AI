@@ -232,6 +232,15 @@ def export_markdown_report(session_id: str):
 
     return md
 
+@app.get("/api/interview/export/json/{session_id}")
+def export_json_report(session_id: str):
+    if session_id not in engine.sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session = engine.sessions[session_id]
+    if not session.feedback:
+        session.feedback = FeedbackEngine.generate_report(session)
+    return to_dict(session.feedback)
+
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 ASSETS_DIR = os.path.join(STATIC_DIR, "assets")
 if os.path.exists(ASSETS_DIR):
