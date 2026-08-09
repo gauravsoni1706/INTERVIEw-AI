@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.env
+.venv
+make_40_commits.py
