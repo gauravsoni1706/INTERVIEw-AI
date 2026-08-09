@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InterviewAI - Enterprise AI Technical Interview Agent</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React 18 & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Mermaid JS for Architecture Diagrams -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+
+    <script>
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            400: '#818cf8',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            900: '#312e81',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #060913;
+            color: #f3f4f6;
+            font-family: 'Outfit', sans-serif;
+            background-image: 
+                radial-gradient(at 10% 10%, rgba(99, 102, 241, 0.18) 0px, transparent 50%),
+                radial-gradient(at 90% 90%, rgba(168, 85, 247, 0.18) 0px, transparent 50%),
+                radial-gradient(at 50% 50%, rgba(14, 165, 233, 0.08) 0px, transparent 50%);
+            background-attachment: fixed;
+        }
+        .glass-panel {
+            background: rgba(15, 22, 38, 0.85);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 15px 35px 0 rgba(0, 0, 0, 0.45);
+        }
+        .glass-card {
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-card:hover {
+            background: rgba(26, 37, 62, 0.95);
+            border-color: rgba(99, 102, 241, 0.5);
+            transform: translateY(-3px);
+            box-shadow: 0 12px 30px rgba(99, 102, 241, 0.25);
+        }
+        .pulse-dot {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            animation: pulse-ring 1.8s infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(10, 15, 28, 0.7); }
+        ::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.5); border-radius: 4px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <div id="root"></div>
+
+    <script>
+        const e = React.createElement;
+        const useState = React.useState;
+        const useEffect = React.useEffect;
+        const useRef = React.useRef;
+
+        function App() {
+            const [candidates, setCandidates] = useState([]);
+            const [selectedCandidate, setSelectedCandidate] = useState(null);
+            const [personality, setPersonality] = useState("Senior Engineer");
+            const [sessionId, setSessionId] = useState(null);
+            const [sessionState, setSessionState] = useState(null);
+            const [messages, setMessages] = useState([]);
+            const [inputMessage, setInputMessage] = useState("");
+            const [isLoading, setIsLoading] = useState(false);
+            const [timerSeconds, setTimerSeconds] = useState(0);
+            const [isPaused, setIsPaused] = useState(false);
+            const [viewMode, setViewMode] = useState("candidate_select"); // "candidate_select", "interview", "feedback"
+            const [searchFilter, setSearchFilter] = useState("");
+            const [showProfileModal, setShowProfileModal] = useState(false);
+
+            const chatBottomRef = useRef(null);
+            const timerRef = useRef(null);
+
+            useEffect(() => {
+                fetch("/api/candidates")
+                    .then(res => res.json())
+                    .then(data => {
+                        setCandidates(data);
+                        if (data.length > 0) setSelectedCandidate(data[0]);
+                    })
+                    .catch(err => console.error("Error loading candidates:", err));
+            }, []);
+
+            useEffect(() => {
+                if (viewMode === "interview" && !isPaused) {
+                    timerRef.current = setInterval(() => setTimerSeconds(s => s + 1), 1000);
+                } else {
+                    clearInterval(timerRef.current);
+                }
+                return () => clearInterval(timerRef.current);
+            }, [viewMode, isPaused]);
+
+            useEffect(() => {
+                chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, [messages, isLoading]);
+
+            const startInterviewFor = (candidateObj) => {
+                const target = candidateObj || selectedCandidate;
+                if (!target) return;
+                setSelectedCandidate(target);
+                setIsLoading(true);
+                setTimerSeconds(0);
+                setMessages([]);
+
+                const candId = target.member?.id || target.id || "CAND-001";
+
+                fetch("/api/interview", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        candidate: candId,
+                        candidate_id: candId,
+                        personality: personality
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    const sid = data.sessionId || data.session_id;
+                    setSessionId(sid);
+                    const questionText = data.reply || data.message || "Welcome! Let's start.";
+                    setMessages([{ sender: "interviewer", text: questionText, timestamp: new Date().toLocaleTimeString() }]);
+                    setSessionState({
+                        question_count: data.question_count || 1,
+                        covered_days: data.covered_days || [1],
+                        difficulty: data.difficulty || "Medium",
+                        phase: "Phase 1 — Introduction"
+                    });
+                    setViewMode("interview");
+                })
+                .catch(err => alert("Failed to start interview: " + err))
+                .finally(() => setIsLoading(false));
+            };
+
+            const sendMessage = (customText) => {
+                const text = (customText || inputMessage).trim();
+                if (!text || isLoading || !sessionId) return;
+                setInputMessage("");
+
+                setMessages(prev => [...prev, { sender: "candidate", text: text, timestamp: new Date().toLocaleTimeString() }]);
+                setIsLoading(true);
+
+                fetch("/api/interview", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        sessionId: sessionId,
+                        session_id: sessionId,
+                        message: text
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    setSessionState(prev => ({
+                        ...prev,
+                        question_count: data.question_count || (prev?.question_count || 1) + 1,
+                        covered_days: data.covered_days || prev?.covered_days,
+                        difficulty: data.difficulty || prev?.difficulty,
+                        feedback: data.feedback || prev?.feedback
+                    }));
+
+                    const replyText = data.reply || data.message;
+                    setMessages(prev => [...prev, { sender: "interviewer", text: replyText, timestamp: new Date().toLocaleTimeString() }]);
+
+                    if (data.done || data.is_complete) {
+                        setTimeout(() => setViewMode("feedback"), 1000);
+                    }
+                })
+                .catch(err => {
+                    setMessages(prev => [...prev, { sender: "system", text: "Error communicating with server.", timestamp: new Date().toLocaleTimeString() }]);
+                })
+                .finally(() => setIsLoading(false));
+            };
+
+            const requestHint = () => {
+                if (!sessionId || isLoading) return;
+                setIsLoading(true);
+                fetch("/api/interview/hint", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ sessionId: sessionId, session_id: sessionId })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    const hintText = data.hint || data.model_answer || "No hint available.";
+                    setMessages(prev => [...prev, {
+                        sender: "interviewer",
+                        text: hintText,
+                        timestamp: new Date().toLocaleTimeString()
+                    }]);
+                })
+                .catch(err => alert("Error fetching hint: " + err))
+                .finally(() => setIsLoading(false));
+            };
+
+            const finishEarly = () => {
+                if (!sessionId || isLoading) return;
+                setIsLoading(true);
+                fetch("/api/interview/finish", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ sessionId: sessionId, session_id: sessionId })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    setSessionState(prev => ({ ...prev, feedback: data.feedback, done: true }));
+                    setViewMode("feedback");
+                })
+                .catch(err => alert("Error finishing interview: " + err))
+                .finally(() => setIsLoading(false));
+            };
+
+            const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+
+            // Quick suggestion presets for testing responses
+            const sampleAnswers = [
+                "Sentence Transformers output 384-dim dense embeddings locally, while OpenAI outputs 1536-dim embeddings.",
+                "We chose ChromaDB for zero-cost local embedded vector search and tested Cosine Distance similarity.",
+                "Our query router inspects intent: structured queries route to SQLite, while semantic queries route to ChromaDB.",
+                "We structured our system prompt with Chain-of-Thought reasoning and strict grounding to prevent hallucinations.",
+                "We wrapped FastAPI endpoints with async handlers and Pydantic error validation for function calling.",
+                "We implemented a supervisor router agent using LangGraph and CrewAI to delegate queries to specialized tools."
+            ];
+
+            // --- HEADER ---
+            const headerElement = e("header", { className: "sticky top-0 z-50 glass-panel px-8 py-4 flex justify-between items-center border-b border-white/10" },
+                e("div", { className: "flex items-center gap-4 cursor-pointer", onClick: () => setViewMode("candidate_select") },
+                    e("div", { className: "w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-sky-400 flex items-center justify-center font-black text-white text-lg shadow-xl shadow-indigo-500/20" }, "AI"),
+                    e("div", null,
+                        e("div", { className: "flex items-center gap-2" },
+                            e("h1", { className: "text-2xl font-black tracking-tight text-white" }, "InterviewAI"),
+                            e("span", { className: "px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-[10px] font-mono font-bold" }, "PRO v1.0")
+                        ),
+                        e("p", { className: "text-xs text-gray-400 font-mono" }, "Autonomous AI Technical Interviewer Platform")
+                    )
+                ),
+                viewMode === "interview" && e("div", { className: "flex items-center gap-4 bg-slate-950/90 px-5 py-2.5 rounded-2xl border border-white/10 text-xs font-mono shadow-inner" },
+                    e("div", { className: "flex items-center gap-2" },
+                        e("span", { className: "w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-dot" }),
+                        e("span", { className: "text-gray-300 font-bold" }, formatTime(timerSeconds))
+                    ),
+                    e("div", { className: "h-4 w-px bg-white/10" }),
+                    e("div", null, "Difficulty: ", e("span", { className: "text-indigo-400 font-bold" }, sessionState?.difficulty || "Medium")),
+                    e("div", { className: "h-4 w-px bg-white/10" }),
+                    e("div", null, "Turns: ", e("span", { className: "text-purple-400 font-bold" }, sessionState?.question_count || 1, " / 8+")),
+                    e("div", { className: "h-4 w-px bg-white/10" }),
+                    e("button", {
+                        onClick: finishEarly,
+                        className: "px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-[11px] font-bold transition"
+                    }, "🏁 Finish & Eval")
+                ),
+                viewMode === "feedback" && e("button", {
+                    onClick: () => setViewMode("candidate_select"),
+                    className: "px-5 py-2.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg transition"
+                }, "◀ Select Another Candidate")
+            );
+
+            // --- VIEW 1: CANDIDATE SELECTION ---
+            const filteredCandidates = candidates.filter(c =>
+                c.member?.name?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                c.member?.jobRole?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+                c.member?.id?.toLowerCase().includes(searchFilter.toLowerCase())
+            );
+
+            const candidateSelectView = e("div", { className: "space-y-8 max-w-7xl mx-auto py-8" },
+                // Hero Banner
+                e("div", { className: "text-center space-y-3" },
+                    e("h2", { className: "text-4xl font-black text-white tracking-tight" }, "Select Cohort Candidate & Persona"),
+                    e("p", { className: "text-sm text-gray-400 max-w-2xl mx-auto" }, "Grounding technical interview questions directly on candidate cohort missions, attempt counts, and verified learning signals.")
+                ),
+
+                // Personality Selector
+                e("div", { className: "glass-panel p-6 rounded-3xl space-y-4 border border-white/10" },
+                    e("div", { className: "flex justify-between items-center" },
+                        e("h3", { className: "text-xs font-bold uppercase tracking-wider text-indigo-400 font-mono" }, "1. Select Interviewer Persona"),
+                        e("span", { className: "text-xs text-gray-400" }, "Adapts interview tone, trade-off focus, and evaluation rigor")
+                    ),
+                    e("div", { className: "grid grid-cols-1 md:grid-cols-4 gap-4" },
+                        [
+                            { id: "Senior Engineer", desc: "Code patterns, implementation depth & edge cases" },
+                            { id: "Staff Engineer", desc: "System design, component scalability & P95 latency" },
+                            { id: "Principal Engineer", desc: "Strategic choices, failure modes & eval metrics" },
+                            { id: "Friendly", desc: "Supportive Tech Lead with constructive review" }
+                        ].map(p =>
+                            e("button", {
+                                key: p.id,
+                                onClick: () => setPersonality(p.id),
+                                className: `p-5 rounded-2xl text-left border transition flex flex-col justify-between ${personality === p.id ? 'bg-indigo-600/30 border-indigo-500 ring-2 ring-indigo-500/50 text-white' : 'bg-slate-900/60 border-white/10 text-gray-400 hover:border-white/20'}`
+                            },
+                                e("div", { className: "font-bold text-white text-base" }, p.id),
+                                e("div", { className: "text-xs text-gray-400 mt-2" }, p.desc)
+                            )
+                        )
+                    )
+                ),
+
+                // Candidate Grid Header & Search
+                e("div", { className: "space-y-4" },
+                    e("div", { className: "flex flex-col sm:flex-row justify-between items-center gap-4" },
+                        e("h3", { className: "text-xl font-bold text-white" }, "2. Cohort Candidate Registry (", filteredCandidates.length, ")"),
+                        e("input", {
+                            type: "text",
+                            value: searchFilter,
+                            onChange: (evt) => setSearchFilter(evt.target.value),
+                            placeholder: "Search candidate name or job role...",
+                            className: "bg-slate-900 border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 w-72"
+                        })
+                    ),
+
+                    // Candidate Cards Grid
+                    e("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
+                        filteredCandidates.map(c => {
+                            const candId = c.member?.id || c.id;
+                            const isSel = selectedCandidate?.member?.id === candId;
+                            const completedMissions = c.missions?.filter(m => m.passed) || [];
+                            const skippedMissions = c.missions?.filter(m => m.skipped) || [];
+                            const firstMissionDay = c.missions && c.missions.length > 0 ? c.missions[0].day : 1;
+
+                            return e("div", {
+                                key: candId,
+                                onClick: () => setSelectedCandidate(c),
+                                className: `glass-panel glass-card p-6 rounded-3xl border cursor-pointer flex flex-col justify-between ${isSel ? 'border-indigo-500 ring-2 ring-indigo-500/50 bg-slate-900/95' : 'border-white/10'}`
+                            },
+                                e("div", null,
+                                    e("div", { className: "flex justify-between items-start" },
+                                        e("div", { className: "flex items-center gap-3" },
+                                            e("div", { className: "w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 font-bold text-white flex items-center justify-center text-sm shadow" },
+                                                c.member?.name?.split(' ').map(n=>n[0]).join('')
+                                            ),
+                                            e("div", null,
+                                                e("h4", { className: "font-bold text-white text-base" }, c.member?.name),
+                                                e("p", { className: "text-xs text-indigo-400 font-mono font-medium" }, c.member?.jobRole)
+                                            )
+                                        ),
+                                        e("span", { className: "text-[11px] font-mono bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded-md" }, candId)
+                                    ),
+
+                                    // Key Metrics Summary
+                                    e("div", { className: "mt-5 grid grid-cols-3 gap-2 text-center py-2.5 bg-slate-950/70 rounded-2xl text-xs border border-white/5 font-mono" },
+                                        e("div", null, e("div", { className: "text-[10px] text-gray-500 uppercase" }, "Completed"), e("div", { className: "font-bold text-emerald-400 text-sm" }, c.signals?.missionsCompleted, "/31")),
+                                        e("div", null, e("div", { className: "text-[10px] text-gray-500 uppercase" }, "1st Try"), e("div", { className: "font-bold text-indigo-400 text-sm" }, c.signals?.missionsFirstTry)),
+                                        e("div", null, e("div", { className: "text-[10px] text-gray-500 uppercase" }, "Commits"), e("div", { className: "font-bold text-purple-400 text-sm" }, c.signals?.commitDays, "d"))
+                                    ),
+
+                                    // Learning Journey Badges
+                                    e("div", { className: "mt-4 space-y-1.5" },
+                                        e("div", { className: "text-[11px] text-gray-400 flex justify-between" },
+                                            e("span", null, "Starts on: ", e("strong", { className: "text-emerald-400 font-mono" }, "Day ", firstMissionDay)),
+                                            skippedMissions.length > 0 && e("span", { className: "text-amber-400 font-mono text-[10px]" }, "Skipped ", skippedMissions.length, " mission(s)")
+                                        )
+                                    )
+                                ),
+
+                                e("div", { className: "mt-6 pt-4 border-t border-white/5 flex justify-between items-center" },
+                                    e("button", {
+                                        onClick: (evt) => { evt.stopPropagation(); setSelectedCandidate(c); setShowProfileModal(true); },
+                                        className: "text-xs font-mono text-indigo-400 hover:text-indigo-300 underline"
+                                    }, "View Profile ↗"),
+                                    e("button", {
+                                        onClick: (evt) => { evt.stopPropagation(); startInterviewFor(c); },
+                                        className: "px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg transition"
+                                    }, "Start Interview ▶")
+                                )
+                            );
+                        })
+                    )
+                )
+            );
+
+            // --- VIEW 2: INTERVIEW ROOM ---
+            const currentDayNum = sessionState?.covered_days ? sessionState.covered_days[sessionState.covered_days.length - 1] : 1;
+
+            const interviewView = e("div", { className: "grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-140px)] py-4" },
+                // Left Drawer - Candidate Info & Journey
+                e("div", { className: "lg:col-span-1 glass-panel p-6 rounded-3xl border border-white/10 space-y-5 flex flex-col justify-between" },
+                    e("div", { className: "space-y-4" },
+                        e("div", { className: "flex justify-between items-start" },
+                            e("div", null,
+                                e("div", { className: "text-[10px] font-mono uppercase text-indigo-400 font-bold" }, "Candidate Under Assessment"),
+                                e("h4", { className: "text-xl font-extrabold text-white mt-0.5" }, selectedCandidate?.member?.name),
+                                e("p", { className: "text-xs text-indigo-300 font-mono" }, selectedCandidate?.member?.jobRole)
+                            ),
+                            e("span", { className: "text-[10px] font-mono bg-white/10 px-2 py-0.5 rounded text-gray-300" }, selectedCandidate?.member?.yearsExperience, "y exp")
+                        ),
+
+                        e("div", { className: "space-y-2 pt-3 border-t border-white/10 text-xs text-gray-300" },
+                            e("div", { className: "flex justify-between" }, e("span", { className: "text-gray-400" }, "Education:"), e("span", { className: "font-semibold text-white text-right" }, selectedCandidate?.member?.education)),
+                            e("div", { className: "flex justify-between" }, e("span", { className: "text-gray-400" }, "Cohort Status:"), e("span", { className: "font-semibold text-emerald-400" }, selectedCandidate?.member?.status)),
+                            e("div", { className: "flex justify-between" }, e("span", { className: "text-gray-400" }, "Interviewer Role:"), e("span", { className: "font-semibold text-purple-400" }, personality))
+                        ),
+
+                        e("div", { className: "pt-4 border-t border-white/10 space-y-2" },
+                            e("div", { className: "text-xs font-bold text-gray-300 font-mono" }, "Evaluated Curriculum Days:"),
+                            e("div", { className: "flex flex-wrap gap-1.5" },
+                                (sessionState?.covered_days || [1]).map(d =>
+                                    e("span", { key: d, className: "px-2.5 py-1 rounded-lg text-xs font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold" }, "Day ", d)
+                                )
+                            )
+                        )
+                    ),
+
+                    // Quick Sample Answers Box
+                    e("div", { className: "pt-4 border-t border-white/10 space-y-2" },
+                        e("div", { className: "text-xs font-bold text-indigo-400 uppercase font-mono" }, "Quick Test Response Suggestions:"),
+                        e("div", { className: "space-y-1.5 max-h-36 overflow-y-auto pr-1 text-[11px]" },
+                            sampleAnswers.slice(0, 3).map((sa, idx) =>
+                                e("button", {
+                                    key: idx,
+                                    onClick: () => sendMessage(sa),
+                                    className: "w-full text-left p-2 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-white/5 text-gray-300 transition truncate"
+                                }, sa)
+                            )
+                        )
+                    )
+                ),
+
+                // Right Panel - Conversational Interface
+                e("div", { className: "lg:col-span-3 glass-panel rounded-3xl border border-white/10 flex flex-col h-full overflow-hidden" },
+                    // Chat Transcript Header
+                    e("div", { className: "px-6 py-3.5 bg-slate-950/80 border-b border-white/10 flex justify-between items-center text-xs font-mono" },
+                        e("div", { className: "flex items-center gap-2" },
+                            e("span", { className: "w-2 h-2 rounded-full bg-emerald-400" }),
+                            e("span", { className: "text-white font-bold" }, sessionState?.phase || "Phase 1 — Introduction")
+                        ),
+                        e("div", { className: "text-gray-400" }, "Assessing Topic on ", e("span", { className: "text-indigo-400 font-bold" }, "Day ", currentDayNum))
+                    ),
+
+                    // Chat Log Body
+                    e("div", { className: "flex-1 p-6 overflow-y-auto space-y-4" },
+                        messages.map((m, idx) =>
+                            e("div", { key: idx, className: `flex gap-3.5 ${m.sender === 'candidate' ? 'justify-end' : 'justify-start'}` },
+                                m.sender === 'interviewer' && e("div", { className: "w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-black flex items-center justify-center text-xs shadow shrink-0" }, "AI"),
+                                e("div", { className: `max-w-3xl p-4 rounded-2xl text-sm leading-relaxed ${m.sender === 'candidate' ? 'bg-indigo-600 text-white rounded-br-none shadow-md' : 'bg-slate-900/90 text-gray-200 border border-white/10 rounded-bl-none'}` },
+                                    e("div", { className: "text-[10px] opacity-70 mb-1 font-mono flex justify-between gap-4" },
+                                        e("span", null, m.sender === 'candidate' ? 'Candidate' : `${personality} Interviewer`),
+                                        e("span", null, m.timestamp)
+                                    ),
+                                    e("div", { className: "whitespace-pre-wrap" }, m.text)
+                                )
+                            )
+                        ),
+                        isLoading && e("div", { className: "flex items-center gap-2 text-xs text-indigo-400 font-mono animate-pulse py-2" },
+                            e("span", { className: "w-2 h-2 rounded-full bg-indigo-400" }),
+                            "AI Interviewer is evaluating candidate response..."
+                        ),
+                        e("div", { ref: chatBottomRef })
+                    ),
+
+                    // Input Action Bar
+                    e("div", { className: "p-4 border-t border-white/10 bg-slate-950/90 space-y-2" },
+                        e("form", {
+                            onSubmit: (evt) => { evt.preventDefault(); sendMessage(); },
+                            className: "flex gap-3"
+                        },
+                            e("textarea", {
+                                value: inputMessage,
+                                onChange: (evt) => setInputMessage(evt.target.value),
+                                onKeyDown: (evt) => { if (evt.key === 'Enter' && !evt.shiftKey) { evt.preventDefault(); sendMessage(); } },
+                                placeholder: "Type candidate technical response... (Press Enter to submit)",
+                                className: "flex-1 bg-slate-900 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none h-14"
+                            }),
+                            e("button", {
+                                type: "button",
+                                onClick: requestHint,
+                                disabled: isLoading,
+                                className: "px-4 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 disabled:opacity-50 font-bold rounded-2xl text-xs transition"
+                            }, "💡 Hint / Answer"),
+                            e("button", {
+                                type: "submit",
+                                disabled: isLoading || !inputMessage.trim(),
+                                className: "px-6 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 text-white font-extrabold rounded-2xl text-sm shadow-lg transition"
+                            }, "Send ▶")
+                        )
+                    )
+                )
+            );
+
+            // --- VIEW 3: FEEDBACK DASHBOARD ---
+            const fb = sessionState?.feedback;
+            const gapsList = fb?.gaps || fb?.areas_for_growth || [];
+            const nextList = fb?.next || fb?.actionable_recommendations || [];
+            const strengthsList = fb?.strengths || [];
+
+            const downloadMarkdownReport = () => {
+                if (!sessionId) return;
+                window.open(`/api/interview/export/markdown/${sessionId}`, '_blank');
+            };
+
+            const feedbackView = fb && e("div", { className: "space-y-8 max-w-5xl mx-auto py-8" },
+                // Header Assessment Banner
+                e("div", { className: "glass-panel p-8 rounded-3xl border border-white/10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6" },
+                    e("div", null,
+                        e("div", { className: "text-xs font-mono font-bold text-indigo-400 uppercase tracking-wider" }, "Structured Hiring & Evaluation Report"),
+                        e("h2", { className: "text-3xl font-black text-white mt-1" }, fb.candidate_name),
+                        e("p", { className: "text-xs text-gray-400 font-mono mt-0.5" }, fb.job_role, " • ", fb.candidate_id)
+                    ),
+                    e("div", { className: "flex items-center gap-4" },
+                        e("div", { className: "text-right" },
+                            e("div", { className: "text-4xl font-black text-indigo-400" }, fb.overall_score || 85.0, e("span", { className: "text-base text-gray-500 font-normal" }, "/100")),
+                            e("div", { className: "mt-1 text-xs font-extrabold text-emerald-400 border border-emerald-500/40 bg-emerald-500/20 px-3 py-1 rounded-xl inline-block" }, fb.hiring_recommendation || "Hire")
+                        ),
+                        e("button", {
+                            onClick: downloadMarkdownReport,
+                            className: "px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition"
+                        }, "📥 Export Markdown")
+                    )
+                ),
+
+                // Executive Summary Card
+                fb.summary && e("div", { className: "glass-panel p-6 rounded-3xl border border-indigo-500/30 bg-indigo-950/20 text-sm leading-relaxed text-indigo-100 space-y-2" },
+                    e("div", { className: "text-xs font-bold text-indigo-400 uppercase font-mono" }, "Overall Executive Summary"),
+                    e("p", null, fb.summary)
+                ),
+
+                // Strengths & Gaps
+                e("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-6" },
+                    e("div", { className: "glass-panel p-6 rounded-3xl space-y-3 border border-emerald-500/30 bg-emerald-950/10" },
+                        e("h3", { className: "text-sm font-bold text-emerald-400 uppercase font-mono" }, "Verified Strengths"),
+                        e("ul", { className: "space-y-2 text-xs text-gray-300" },
+                            strengthsList.map((s, i) => e("li", { key: i, className: "flex gap-2" }, e("span", { className: "text-emerald-400" }, "✓"), e("span", null, s)))
+                        )
+                    ),
+                    e("div", { className: "glass-panel p-6 rounded-3xl space-y-3 border border-amber-500/30 bg-amber-950/10" },
+                        e("h3", { className: "text-sm font-bold text-amber-400 uppercase font-mono" }, "Knowledge Gaps & Areas for Growth"),
+                        e("ul", { className: "space-y-2 text-xs text-gray-300" },
+                            gapsList.map((g, i) => e("li", { key: i, className: "flex gap-2" }, e("span", { className: "text-amber-400" }, "⚠"), e("span", null, g)))
+                        )
+                    )
+                ),
+
+                // Actionable Recommendations Mapped to Curriculum
+                e("div", { className: "glass-panel p-6 rounded-3xl space-y-4 border border-white/10" },
+                    e("h3", { className: "text-sm font-bold text-indigo-400 uppercase font-mono" }, "Actionable Next Steps (Mapped to Curriculum)"),
+                    e("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4 text-xs" },
+                        nextList.map((rec, i) =>
+                            e("div", { key: i, className: "bg-slate-900/90 p-4 rounded-2xl border border-white/5 text-gray-300 space-y-1" },
+                                e("div", { className: "text-indigo-400 font-mono font-bold" }, "Recommendation ", i + 1),
+                                e("div", null, rec)
+                            )
+                        )
+                    )
+                )
+            );
+
+            // Candidate Profile Modal
+            const profileModal = showProfileModal && selectedCandidate && e("div", { className: "fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4" },
+                e("div", { className: "glass-panel max-w-2xl w-full p-8 rounded-3xl space-y-6 border border-white/20" },
+                    e("div", { className: "flex justify-between items-start" },
+                        e("div", null,
+                            e("h3", { className: "text-2xl font-black text-white" }, selectedCandidate.member?.name),
+                            e("p", { className: "text-xs text-indigo-400 font-mono" }, selectedCandidate.member?.jobRole, " • ", selectedCandidate.member?.id)
+                        ),
+                        e("button", { onClick: () => setShowProfileModal(false), className: "text-gray-400 hover:text-white font-bold text-lg" }, "✕")
+                    ),
+
+                    e("div", { className: "grid grid-cols-3 gap-3 text-center py-3 bg-slate-950 rounded-2xl text-xs font-mono border border-white/5" },
+                        e("div", null, e("div", { className: "text-gray-500 text-[10px]" }, "Commit Days"), e("div", { className: "font-bold text-purple-400 text-base" }, selectedCandidate.signals?.commitDays)),
+                        e("div", null, e("div", { className: "text-gray-500 text-[10px]" }, "Completed"), e("div", { className: "font-bold text-emerald-400 text-base" }, selectedCandidate.signals?.missionsCompleted, "/31")),
+                        e("div", null, e("div", { className: "text-gray-500 text-[10px]" }, "1st Try Passes"), e("div", { className: "font-bold text-indigo-400 text-base" }, selectedCandidate.signals?.missionsFirstTry))
+                    ),
+
+                    e("div", { className: "space-y-3" },
+                        e("h4", { className: "text-xs font-bold text-gray-300 uppercase font-mono" }, "Cohort Mission Breakdown:"),
+                        e("div", { className: "grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-2 text-xs" },
+                            selectedCandidate.missions?.map((m, idx) =>
+                                e("div", { key: idx, className: `p-2.5 rounded-xl border flex justify-between items-center ${m.skipped ? 'bg-slate-950/60 border-gray-800 text-gray-500 opacity-60' : m.passed ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300' : 'bg-amber-950/20 border-amber-500/30 text-amber-300'}` },
+                                    e("div", { className: "font-mono" }, "Day ", m.day, ": ", m.title),
+                                    e("span", { className: "text-[10px] font-bold uppercase" }, m.skipped ? "Skipped" : m.passed ? "Passed" : "Failed")
+                                )
+                            )
+                        )
+                    ),
+
+                    e("div", { className: "flex justify-end gap-3 pt-4 border-t border-white/10" },
+                        e("button", { onClick: () => setShowProfileModal(false), className: "px-4 py-2 text-xs font-bold text-gray-400 hover:text-white" }, "Close"),
+                        e("button", {
+                            onClick: () => { setShowProfileModal(false); startInterviewFor(selectedCandidate); },
+                            className: "px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg"
+                        }, "Start Interview ▶")
+                    )
+                )
+            );
+
+            return e("div", { className: "flex flex-col min-h-screen" },
+                headerElement,
+                e("main", { className: "flex-1 px-8" },
+                    viewMode === "candidate_select" && candidateSelectView,
+                    viewMode === "interview" && interviewView,
+                    viewMode === "feedback" && feedbackView
+                ),
+                profileModal
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById("root")).render(e(App));
+    </script>
+</body>
+</html>
