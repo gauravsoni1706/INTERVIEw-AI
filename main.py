@@ -241,6 +241,15 @@ def export_json_report(session_id: str):
         session.feedback = FeedbackEngine.generate_report(session)
     return to_dict(session.feedback)
 
+@app.get("/PROMPTS.md", response_class=PlainTextResponse)
+@app.get("/api/prompts", response_class=PlainTextResponse)
+def serve_prompts():
+    prompts_file = os.path.join(BASE_DIR, "PROMPTS.md")
+    if os.path.exists(prompts_file):
+        with open(prompts_file, 'r', encoding='utf-8') as f:
+            return f.read()
+    return "PROMPTS.md not found"
+
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 ASSETS_DIR = os.path.join(STATIC_DIR, "assets")
 if os.path.exists(ASSETS_DIR):
